@@ -1,0 +1,330 @@
+---
+title: "Problem Set 4"
+subtitle: "Least Squares,Mean,and Variance and Data Frame Manipulation"
+author: "Rock Lambros"
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+
+```
+
+# Introduction
+
+These questions were rendered in R markdown through RStudio (<https://www.rstudio.com/wp-content/uploads/2015/02/rmarkdown-cheatsheet.pdf>, <http://rmarkdown.rstudio.com> ).
+
+Please generate your solutions in R markdown and upload both a knitted doc, docx, or pdf document in addition to the Rmd file.
+Please put your name in the "author" section in the header.
+
+For this assignment, please do all calculations in R and show the code and the results in the knitted document.
+
+### Collaboration
+
+(5 points)
+
+Other students consulted on assignment. Please write none if you worked by yourself: None
+
+### AI
+
+(5 points)
+
+AI tools used in this assignment. Please briefly describe the use you made of the tools. Please write none if you did not use any AI tools: Claude Code for R code troubleshooting
+
+# Question 1
+
+Here we examine linear models for the GDP of multiple political entities in 2014 and 2024. The data for this question are from the International Monetary Fund (IMF) World Economic Outlook (WEO) database (International Monetary Fund, (WEO) https:://data.imf.org/en/datasets/IMF.RES:WEO. Accessed om 2026-1-30). The data set "imf_gdp_prelim.csv" contains GDP per capita in purchasing power parity (PPP) international dollars for multiple countries and aggregated regions for the years 2014 and 2024, as well as quite a bit of other information.
+
+## Q1, part 1
+
+(5 points)
+
+Please make a scatter plot of the 2024 GDP per capita on the vertical axis versus the 2014 GDP per capita for all countries and aggregated regions on the horizontal axis. This uses the rows for which SERIES_NAME=="Gross domestic product (GDP), Constant prices, Per capita, purchasing power parity (PPP) international dollar, ICP benchmark 2021"). Note that the 2014 values are in the column labeled `X2014` and the 2024 values are in the column labeled `X2014`.  Please label the axes and provide a title. Please set alpha=.2 to make more structure visible in the lower GDP per capita regions.
+
+```{r}
+# Import the IMF GDP dataset
+dat.gdp <- read.csv("imf_gdp_prelim.csv")
+
+# Filter to GDP per capita PPP rows only
+dat.plot <- dat.gdp %>%
+  filter(SERIES_NAME == "Gross domestic product (GDP), Constant prices, Per capita, purchasing power parity (PPP) international dollar, ICP benchmark 2021")
+
+# Scatter plot: 2024 GDP per capita (y) vs 2014 GDP per capita (x)
+g <- ggplot(dat.plot, aes(x = X2014, y = X2024)) +
+  geom_point(alpha = 0.2) +
+  labs(
+    x = "GDP per Capita 2014 (PPP International Dollars)",
+    y = "GDP per Capita 2024 (PPP International Dollars)",
+    title = "GDP per Capita 2024 vs 2014 for Countries and Regions"
+  )
+g
+```
+
+
+## Q1, part 2
+
+(5 points)
+
+Please add the least-squares best fit line to the scatter plot from part 1 and display the result. Please output the slope and the intercept.
+
+### your answer here
+
+The least-squares regression line minimizes the sum of squared vertical distances between each data point and the line. The slope and intercept are printed below.
+
+```{r}
+# Fit least-squares linear model: X2024 ~ X2014
+fit.ls <- lm(X2024 ~ X2014, data = dat.plot)
+
+# Extract and display slope and intercept
+ls.intercept <- coef(fit.ls)[1]
+ls.slope <- coef(fit.ls)[2]
+cat("Least-squares intercept:", ls.intercept, "\n")
+cat("Least-squares slope:", ls.slope, "\n")
+
+# Add the regression line to the scatter plot from part 1
+g <- g + geom_abline(intercept = ls.intercept, slope = ls.slope, color = "blue")
+g
+```
+
+## Q1, part 3
+
+(5 points)
+
+For a given slope and intercept for the model `X2024 = intercept + slope * X2014`, please write a function to return the total absolute error for the model over all the data points in the data set from part 1. Please compute the total absolute error for the least-squares best fit line from part 2.
+
+### your answer here
+
+The total absolute error sums |actual - predicted| across all data points, rather than squaring the differences like least-squares does. This makes the measure less sensitive to outliers.
+
+```{r}
+# Function to compute total absolute error for a given slope and intercept
+total.absolute.error <- function(slope, intercept, data) {
+  predicted <- intercept + slope * data$X2014
+  sum(abs(data$X2024 - predicted))
+}
+
+# Compute total absolute error for the least-squares fit
+ls.tae <- total.absolute.error(ls.slope, ls.intercept, dat.plot)
+cat("Total absolute error for least-squares line:", ls.tae, "\n")
+```
+## Q1, part 4
+
+(5 points)
+
+Please use the function `optim` and the function from part 3 to find the slope and intercept that minimize the total absolute error for the data set from part 1. Please output the slope and intercept found by `optim` and the total absolute error for these parameters.
+
+### your answer here
+
+We use `optim()` to find the slope and intercept that minimize total absolute error. We seed it with the least-squares estimates as a starting point.
+
+```{r}
+# Wrapper for optim: takes a parameter vector c(slope, intercept)
+tae.for.optim <- function(params) {
+  total.absolute.error(slope = params[1], intercept = params[2], data = dat.plot)
+}
+
+# Run optimization, using least-squares coefficients as starting values
+opt.result <- optim(par = c(ls.slope, ls.intercept), fn = tae.for.optim)
+
+# Extract optimized slope and intercept
+opt.slope <- opt.result$par[1]
+opt.intercept <- opt.result$par[2]
+opt.tae <- opt.result$value
+
+cat("Minimum absolute error slope:", opt.slope, "\n")
+cat("Minimum absolute error intercept:", opt.intercept, "\n")
+cat("Total absolute error:", opt.tae, "\n")
+```
+## Q1, part 5
+
+(5 points)
+
+Please add the minimum total absolute error line to the scatter plot from part 1 and display the result. Please use a different color for this line than the least-squares best fit line from part 2.
+
+### your answer here
+
+The blue line is the least-squares fit (from part 2) and the red line minimizes total absolute error (from part 4). The absolute-error line is less pulled toward outliers like Macao.
+
+```{r}
+# Add the minimum absolute error line (red) alongside the LS line (blue)
+g <- g + geom_abline(intercept = opt.intercept, slope = opt.slope, color = "red")
+g
+```
+
+
+To get a sense of the difference between the two lines, you can zoom in on the lower left corner of the plot by adding `+xlim(0,75000)+ylim(0,75000)` to the ggplot object `g`, and the upper right corner by adding `+xlim(75000,175000)+ylim(75000,175000)` to the ggplot object `g`.
+
+Note that the least squares best fit line appears to be more affected by "Macao Special Administrative Region, People's Republic of China", which shows the highest 2014 GDP per capita in the data set, but a lower 2024 GDP per capita.
+
+```{r}
+dat.plot$COUNTRY[which.max(dat.plot$X2014)]
+
+g + xlim(0, 75000) + ylim(0, 75000)
+
+g + xlim(75000, 175000) + ylim(75000, 175000)
+```
+
+
+# Question 2
+
+(5 points)
+
+For the data set in question 1, some of the cases are regions rather than countries. Please identify the regions in the data set aided by the fact that the variable `PRIMARY_DOMESTIC_CURRENCY` is blank for regions but generally not for countries or that the number of rows in the data set per country is typically 3, while it is 1 for regions.
+Please output the names of the regions.
+
+
+### your answer here
+
+Regions have a blank `PRIMARY_DOMESTIC_CURRENCY` field, while countries have a currency listed. We can also confirm: countries typically appear in 3 rows (one per GDP series), while regions appear in only 1 row. We exclude Venezuela, which has a blank currency but is a country (it has 2 rows due to missing data in one series).
+
+```{r}
+# Method 1: Identify entities with blank PRIMARY_DOMESTIC_CURRENCY
+# Count rows per entity in the full dataset to distinguish regions (1 row) from countries
+rows.per.entity <- dat.gdp %>%
+  group_by(COUNTRY) %>%
+  summarise(n.rows = n(), currency = first(PRIMARY_DOMESTIC_CURRENCY))
+
+# Regions: blank currency AND only 1 row in the dataset
+dat.regions <- rows.per.entity %>%
+  filter(currency == "" & n.rows == 1)
+
+cat("Regions in the dataset:\n")
+dat.regions$COUNTRY
+```
+
+
+# Question 3 Normal Approximation to Binomial Distributions
+
+One approach to discrete numerical data used in applications based on continuous distributions is to model the discrete values as representing bins in a continuous distribution. For example, we could treat the values 0,1,2,...,n as representing the bins $(-\frac{1}{2}, \frac{1}{2}]$, $(\frac{1}{2}, \frac{3}{2}]$, ..., $(n-\frac{1}{2}, n+\frac{1}{2}]$ in a continuous distribution. 
+
+Below is a function which takes a size `n` and a probability of success `p` and produces the probability of in each of the events $(-\frac{1}{2}, \frac{1}{2}]$, $(\frac{1}{2}, \frac{3}{2}]$, ..., $(n-\frac{1}{2}, n+\frac{1}{2}]$ under a Normal distribution with parameters $\mu=np$ and $\sigma^2=np(1-p)$. 
+
+
+```{r}
+normal.approximation<-function(n,p){
+  mu.np<-n*p
+  sigma.np<-sqrt(n*p*(1-p))
+  breaks<-seq(-0.5,n+0.5,by=1)
+  probs<-pnorm(breaks, mean=mu.np, sd=sigma.np)
+  probs.diff<-diff(probs)
+  return(probs.diff)
+}
+
+```
+
+To illustrate, consider a binomial distribution with parameters $n=10$ and $p=0.3$. The exact probabilities for the number of successes from 0 to 10 can be computed using the `dbinom` function in R. The normal approximation can be computed using the `normal.approximation` function defined above. The following code compares the exact and approximate probabilities visually
+
+```{r}
+dat.approx<-data.frame(
+  successes=0:10,
+  exact=dbinom(0:10, size=10, prob=0.3),
+  approx=normal.approximation(10, 0.3)
+)
+g<-ggplot(dat.approx, aes(x=successes))+
+  geom_bar(aes(y=exact), stat="identity", fill="blue", width=1,alpha=.5)+
+  geom_point(aes(y=approx), color="red")+stat_function(fun=dnorm,
+    args=list(mean=10*0.3, sd=sqrt(10*0.3*0.7)), color="red")+
+  labs(y="Probability", title="Exact and Normal Approximation to Binomial Distribution n=10, p=0.3")
+g
+```
+The sum of the absolute differences between the exact and approximate probabilities can be computed as follows:
+
+```{r}
+(sum.abs.diff<-sum(abs(dat.approx$exact - dat.approx$approx)))
+```
+
+
+
+## Q3, part 1
+
+(5 points)
+
+Please replicate the plots and calculations of absolute differences above for the 9 pairs of values (n,p) in $\{5,25,125\}\times \{0.1,0.2,0.5\}$. Please show labeled plots and labeled values of the absolute differences for each pair. 
+
+For full credit, please write a function to generate the plots and compute the absolute differences for arbitrary values of `n` and `p`, and then use this function to generate the required plots and calculations by stepping through the parameter grid using a loop or the `apply` function.
+
+### your answer here
+
+```{r}
+n.values <- c(5, 25, 125)
+p.values <- c(0.1, 0.2, 0.5)
+params.grid <- expand.grid(n = n.values, p = p.values)
+
+# Function to plot exact vs normal approximation and return sum of absolute differences
+plot.binom.approx <- function(n, p) {
+  # Build data frame of exact binomial and normal approximation probabilities
+  dat.approx <- data.frame(
+    successes = 0:n,
+    exact = dbinom(0:n, size = n, prob = p),
+    approx = normal.approximation(n, p)
+  )
+
+  # Create comparison plot
+  g <- ggplot(dat.approx, aes(x = successes)) +
+    geom_bar(aes(y = exact), stat = "identity", fill = "blue", width = 1, alpha = 0.5) +
+    geom_point(aes(y = approx), color = "red") +
+    stat_function(fun = dnorm,
+      args = list(mean = n * p, sd = sqrt(n * p * (1 - p))), color = "red") +
+    labs(y = "Probability",
+         title = paste0("Exact vs Normal Approximation: n=", n, ", p=", p))
+  print(g)
+
+  # Compute and return sum of absolute differences
+  sum.abs.diff <- sum(abs(dat.approx$exact - dat.approx$approx))
+  return(sum.abs.diff)
+}
+
+# Loop through all 9 parameter combinations
+results <- numeric(nrow(params.grid))
+for (i in 1:nrow(params.grid)) {
+  results[i] <- plot.binom.approx(params.grid$n[i], params.grid$p[i])
+  cat("n =", params.grid$n[i], ", p =", params.grid$p[i],
+      "=> Sum of absolute differences:", results[i], "\n")
+}
+
+# Store results for use in part 2
+params.grid$sum.abs.diff <- results
+```
+
+
+## Q3, part 2
+
+(5 points)
+
+Please summarize the quality of the Normal approximation to the Binomial distribution as a function of the parameters $n$ and $p$. In particular, please describe how the quality of the approximation changes as $n$ increases for fixed $p$ and as $p$ changes for fixed $n$.
+
+You may find that plotting the sum of absolute differences by $n$ using $p$ as a factor (or vice versa) helps clarify these relationships.
+
+
+### your answer here
+
+```{r}
+# Plot sum of absolute differences by n, colored by p
+params.grid$p.factor <- as.factor(params.grid$p)
+
+ggplot(params.grid, aes(x = n, y = sum.abs.diff, color = p.factor, group = p.factor)) +
+  geom_line() +
+  geom_point(size = 3) +
+  labs(
+    x = "n (number of trials)",
+    y = "Sum of Absolute Differences",
+    color = "p",
+    title = "Quality of Normal Approximation to Binomial"
+  )
+
+# Display the results table
+params.grid[, c("n", "p", "sum.abs.diff")]
+```
+
+**Effect of increasing n (fixed p):** As n increases, the sum of absolute differences decreases for all values of p. Larger sample sizes make the binomial distribution more symmetric and bell-shaped, so the normal approximation becomes more accurate. This is consistent with the Central Limit Theorem.
+
+**Effect of p (fixed n):** The approximation is best when p is close to 0.5 (where the binomial is most symmetric) and worst for extreme values of p (like 0.1), where the binomial is skewed. The skewness makes the symmetric normal curve a poor fit, especially for small n.
+
+**Combined:** The worst approximation occurs at small n with extreme p (e.g., n=5, p=0.1). The best occurs at large n with p near 0.5 (e.g., n=125, p=0.5). This aligns with the traditional rule of thumb that the normal approximation is reasonable when both np and n(1-p) are at least 5.
+
+
